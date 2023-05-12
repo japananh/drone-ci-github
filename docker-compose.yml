@@ -1,0 +1,72 @@
+version: '3.8'
+
+services:
+  drone-server:
+    image: drone/drone:latest
+    container_name: drone-server
+    restart: always
+    ports:
+      - "9998:80"
+      - "9999:443"
+    volumes:
+      - /var/lib/drone:/data
+    environment:   
+      - DRONE_SERVER_HOST # Public host name or ip of container `drone-server`
+      - DRONE_SERVER_PROTO
+      - DRONE_RPC_SECRET
+      - DRONE_GITHUB_SERVER
+      - DRONE_GITHUB_CLIENT_ID
+      - DRONE_GITHUB_CLIENT_SECRET
+      - DRONE_USER_CREATE # A user account that be created on startup
+      - DRONE_DATABASE_DRIVER
+      - DRONE_DATABASE_DATASOURCE
+      - DRONE_DATABASE_SECRET
+    depends_on:
+      drone-postgres:
+        condition: service_started
+
+  drone-runner:
+    image: drone/drone-runner-docker:latest
+    container_name: drone-runner
+    restart: always
+    ports:
+      - "33000:3000"
+    environment:
+      - DRONE_RPC_HOST # Host name of container `drone-server`
+      - DRONE_RPC_PROTO
+      - DRONE_RPC_SECRET
+      - DRONE_RUNNER_NAME
+      - DRONE_RUNNER_CAPACITY
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      drone-server:
+        condition: service_started
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          memory: 4096M
+          cpus: '1.85'
+
+  drone-postgres:
+    image: postgres:13
+    container_name: drone-postgres
+    restart: always
+    ports:
+      - "15432:5432"
+    environment:
+      - POSTGRES_USER
+      - POSTGRES_PASSWORD
+      - POSTGRES_DB
+    volumes:
+      - ./pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD", "pg_isready", "-U", "${POSTGRES_USER}", "-P", "${POSTGRES_PASSWORD}" ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  pg-data:
+    external: true
